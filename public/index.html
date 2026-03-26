@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSA Card Manager</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+
+    header { background: #1a1a2e; color: #fff; padding: 20px 30px; }
+    header h1 { font-size: 20px; font-weight: 600; }
+
+    .container { max-width: 960px; margin: 30px auto; padding: 0 20px; }
+
+    .input-section { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
+    .input-section h2 { font-size: 16px; margin-bottom: 16px; }
+
+    .input-row { display: flex; gap: 10px; }
+    .input-row input {
+      flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+    }
+    .input-row input:focus { outline: none; border-color: #4a6cf7; }
+    .input-row button {
+      padding: 10px 24px; background: #4a6cf7; color: #fff; border: none; border-radius: 6px;
+      font-size: 14px; cursor: pointer; white-space: nowrap;
+    }
+    .input-row button:hover { background: #3b5de7; }
+    .input-row button:disabled { background: #aaa; cursor: not-allowed; }
+
+    .status { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
+    .status.success { display: block; background: #e8f5e9; color: #2e7d32; }
+    .status.error { display: block; background: #ffebee; color: #c62828; }
+    .status.info { display: block; background: #e3f2fd; color: #1565c0; }
+
+    .stats { display: flex; gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: #fff; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex: 1; }
+    .stat-card .label { font-size: 12px; color: #888; }
+    .stat-card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+
+    .table-section { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .table-section h2 { font-size: 16px; margin-bottom: 16px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #eee; color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+    tr:hover td { background: #fafafa; }
+
+    .grade-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; background: #e8eaf6; color: #3949ab;
+    }
+
+    .img-thumb { width: 40px; height: 56px; object-fit: cover; border-radius: 3px; border: 1px solid #eee; }
+    .no-img { width: 40px; height: 56px; background: #f0f0f0; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #aaa; }
+
+    .empty { text-align: center; padding: 40px; color: #aaa; }
+
+    .csv-section { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
+    .csv-section h2 { font-size: 16px; margin-bottom: 16px; }
+    .csv-drop {
+      border: 2px dashed #ccc; border-radius: 8px; padding: 30px; text-align: center; color: #888;
+      cursor: pointer; transition: border-color 0.2s, background 0.2s;
+    }
+    .csv-drop:hover, .csv-drop.dragover { border-color: #4a6cf7; background: #f0f4ff; }
+    .csv-drop input[type="file"] { display: none; }
+    .csv-drop p { font-size: 14px; margin-bottom: 4px; }
+    .csv-drop small { font-size: 12px; color: #aaa; }
+
+    .csv-preview { margin-top: 16px; display: none; }
+    .csv-preview .summary { font-size: 13px; margin-bottom: 12px; padding: 10px 14px; background: #f9f9f9; border-radius: 6px; }
+    .csv-preview .summary span { font-weight: 600; }
+    .csv-preview button {
+      padding: 10px 24px; background: #4a6cf7; color: #fff; border: none; border-radius: 6px;
+      font-size: 14px; cursor: pointer;
+    }
+    .csv-preview button:hover { background: #3b5de7; }
+    .csv-preview button:disabled { background: #aaa; cursor: not-allowed; }
+
+    .progress-bar { width: 100%; height: 8px; background: #eee; border-radius: 4px; margin-top: 12px; display: none; }
+    .progress-bar .fill { height: 100%; background: #4a6cf7; border-radius: 4px; transition: width 0.3s; width: 0%; }
+    .progress-text { font-size: 12px; color: #888; margin-top: 6px; display: none; }
+
+    .csv-results { margin-top: 12px; font-size: 13px; display: none; }
+    .csv-results .result-item { padding: 4px 0; }
+    .csv-results .result-item.success { color: #2e7d32; }
+    .csv-results .result-item.skipped { color: #1565c0; }
+    .csv-results .result-item.error { color: #c62828; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PSA Card Manager</h1>
+  </header>
+
+  <div class="container">
+    <div class="input-section">
+      <h2>PSA鑑定番号を入力</h2>
+      <div class="input-row">
+        <input type="text" id="certInput" placeholder="鑑定番号を入力（例: 10000001）" />
+        <button id="fetchBtn" onclick="fetchCert()">取得</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="csv-section">
+      <h2>CSVファイルから一括取得</h2>
+      <div class="csv-drop" id="csvDrop" onclick="document.getElementById('csvFile').click()">
+        <input type="file" id="csvFile" accept=".csv" onchange="handleCSV(this.files[0])" />
+        <p>CSVファイルをドラッグ&ドロップ または クリックして選択</p>
+        <small>PSAサイトからダウンロードしたCSVファイルに対応</small>
+      </div>
+      <div class="csv-preview" id="csvPreview">
+        <div class="summary" id="csvSummary"></div>
+        <button id="csvProcessBtn" onclick="processCSV()">一括取得を開始</button>
+        <div class="progress-bar" id="progressBar"><div class="fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText"></div>
+        <div class="csv-results" id="csvResults"></div>
+      </div>
+      <div class="status" id="csvStatus"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="label">登録済みカード数</div>
+        <div class="value" id="totalCount">-</div>
+      </div>
+    </div>
+
+    <div class="table-section">
+      <h2>取得済みカード一覧</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>画像</th>
+            <th>Cert#</th>
+            <th>選手 / カード名</th>
+            <th>年</th>
+            <th>ブランド</th>
+            <th>グレード</th>
+            <th>登録日</th>
+          </tr>
+        </thead>
+        <tbody id="certTable">
+          <tr><td colspan="7" class="empty">データがありません</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const certInput = document.getElementById('certInput');
+    const fetchBtn = document.getElementById('fetchBtn');
+    const statusEl = document.getElementById('status');
+
+    certInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') fetchCert();
+    });
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + type;
+    }
+
+    async function fetchCert() {
+      const certNumber = certInput.value.trim();
+      if (!certNumber) { showStatus('鑑定番号を入力してください', 'error'); return; }
+
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = '取得中...';
+      showStatus('PSA APIに問い合わせ中...', 'info');
+
+      try {
+        const res = await fetch('/api/cert/' + certNumber, { method: 'POST' });
+        const data = await res.json();
+
+        if (res.ok) {
+          if (data.message === '取得済みの番号です') {
+            showStatus('この番号は取得済みです（APIリクエストは消費していません）', 'info');
+          } else {
+            showStatus('取得・登録完了しました', 'success');
+            certInput.value = '';
+          }
+        } else {
+          showStatus(data.message || 'エラーが発生しました', 'error');
+        }
+      } catch (e) {
+        showStatus('通信エラーが発生しました', 'error');
+      }
+
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = '取得';
+      loadCerts();
+    }
+
+    async function loadCerts() {
+      try {
+        const res = await fetch('/api/certs');
+        const data = await res.json();
+        document.getElementById('totalCount').textContent = data.count;
+
+        const tbody = document.getElementById('certTable');
+        if (data.count === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty">データがありません</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.certs.map(c => `
+          <tr>
+            <td>${c.front_image_url ? `<img class="img-thumb" src="${c.front_image_url}" alt="front" />` : '<div class="no-img">N/A</div>'}</td>
+            <td>${c.cert_number}</td>
+            <td>${c.subject}</td>
+            <td>${c.year}</td>
+            <td>${c.brand}</td>
+            <td><span class="grade-badge">${c.grade}</span></td>
+            <td>${c.created_at ? c.created_at.split(' ')[0] : '-'}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load certs', e);
+      }
+    }
+
+    // --- CSV機能 ---
+    const csvDrop = document.getElementById('csvDrop');
+    const csvStatusEl = document.getElementById('csvStatus');
+    let pendingCertNumbers = [];
+
+    csvDrop.addEventListener('dragover', (e) => { e.preventDefault(); csvDrop.classList.add('dragover'); });
+    csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('dragover'));
+    csvDrop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      csvDrop.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith('.csv')) {
+        handleCSV(file);
+      } else {
+        showCSVStatus('CSVファイルを選択してください', 'error');
+      }
+    });
+
+    function showCSVStatus(msg, type) {
+      csvStatusEl.textContent = msg;
+      csvStatusEl.className = 'status ' + type;
+    }
+
+    async function handleCSV(file) {
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('csvfile', file);
+
+      showCSVStatus('CSVファイルを解析中...', 'info');
+      document.getElementById('csvPreview').style.display = 'none';
+      document.getElementById('csvResults').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/csv/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showCSVStatus(data.message, 'error');
+          return;
+        }
+
+        pendingCertNumbers = data.certNumbers;
+        document.getElementById('csvSummary').innerHTML =
+          `検出: <span>${data.total}件</span> / 取得済み: <span>${data.alreadyFetched}件</span> / 新規取得対象: <span>${data.toFetch}件</span>`;
+
+        document.getElementById('csvPreview').style.display = 'block';
+        document.getElementById('csvProcessBtn').disabled = data.toFetch === 0;
+        csvStatusEl.className = 'status';
+
+        if (data.toFetch === 0) {
+          showCSVStatus('すべて取得済みです。新規取得の必要はありません。', 'info');
+        }
+      } catch (e) {
+        showCSVStatus('CSVファイルの解析に失敗しました', 'error');
+      }
+    }
+
+    async function processCSV() {
+      if (pendingCertNumbers.length === 0) return;
+
+      const btn = document.getElementById('csvProcessBtn');
+      const progressBar = document.getElementById('progressBar');
+      const progressFill = document.getElementById('progressFill');
+      const progressText = document.getElementById('progressText');
+      const resultsEl = document.getElementById('csvResults');
+
+      btn.disabled = true;
+      btn.textContent = '処理中...';
+      progressBar.style.display = 'block';
+      progressText.style.display = 'block';
+      resultsEl.style.display = 'block';
+      resultsEl.innerHTML = '';
+
+      const total = pendingCertNumbers.length;
+      let processed = 0;
+
+      for (const certNumber of pendingCertNumbers) {
+        progressText.textContent = `${processed + 1} / ${total} 処理中... (Cert# ${certNumber})`;
+
+        try {
+          const res = await fetch('/api/cert/' + certNumber, { method: 'POST' });
+          const data = await res.json();
+
+          if (res.ok) {
+            const isSkipped = data.message === '取得済みの番号です';
+            resultsEl.innerHTML += `<div class="result-item ${isSkipped ? 'skipped' : 'success'}">Cert# ${certNumber}: ${data.message}</div>`;
+          } else {
+            resultsEl.innerHTML += `<div class="result-item error">Cert# ${certNumber}: ${data.message}</div>`;
+          }
+        } catch (e) {
+          resultsEl.innerHTML += `<div class="result-item error">Cert# ${certNumber}: 通信エラー</div>`;
+        }
+
+        processed++;
+        progressFill.style.width = (processed / total * 100) + '%';
+      }
+
+      progressText.textContent = `完了: ${total}件処理済み`;
+      btn.textContent = '完了';
+      loadCerts();
+    }
+
+    loadCerts();
+  </script>
+</body>
+</html>
