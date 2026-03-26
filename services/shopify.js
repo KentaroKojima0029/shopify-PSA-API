@@ -25,15 +25,19 @@ function formatGrade(grade) {
   return 'Other';
 }
 
-// 商品名で既存商品を検索（グレード抜きのタイトルで照合）
-async function findProductByTitle(title) {
+// ベースタイトル（グレード抜き）で既存商品を検索
+async function findProductByBaseTitle(baseTitle) {
   const client = getClient();
   const res = await client.get('/products.json', {
-    params: { title, limit: 1 },
+    params: { title: baseTitle, limit: 10 },
   });
+  // タイトルの末尾がベースタイトルと一致する商品を探す
+  // タイトル形式: "PSA 10 {baseTitle}" なので、ベースタイトルを含むものを検索
   const products = res.data.products;
-  if (products.length > 0 && products[0].title === title) {
-    return products[0];
+  for (const p of products) {
+    if (p.title.endsWith(baseTitle)) {
+      return p;
+    }
   }
   return null;
 }
@@ -41,30 +45,26 @@ async function findProductByTitle(title) {
 // 既存商品にバリアント（グレード + 鑑定番号）を追加
 async function addVariant(productId, cert) {
   const client = getClient();
-  const res = await client.post(`/products/${productId}/variants.json`, {
-    variant: {
-      option1: formatGrade(cert.grade),
-      option2: cert.certNumber,
-      inventory_management: 'shopify',
-      inventory_quantity: 1,
-    },
-  });
-  return res.data.variant;
-}
-
-// バリアントの在庫を1に設定
-async function setInventoryToOne(variant) {
-  const client = getClient();
-  const inventoryItemId = variant.inventory_item_id;
-  // ロケーション取得
-  const locRes = await client.get('/locations.json');
-  const locationId = locRes.data.locations[0].id;
-  // 在庫レベルを1に設定
-  await client.post('/inventory_levels/set.json', {
-    inventory_item_id: inventoryItemId,
-    location_id: locationId,
-    available: 1,
-  });
+  try {
+    const res = await client.post(`/products/${productId}/variants.json`, {
+      variant: {
+        option1: formatGrade(cert.grade),
+        option2: cert.certNumber,
+        inventory_management: 'shopify',
+        inventory_quantity: 1,
+      },
+    });
+    return res.data.variant;
+  } catch (err) {
+    // バリアントが既に存在する場合はスキップ
+    if (err.response && err.response.data && err.response.data.errors) {
+      const errMsg = JSON.stringify(err.response.data.errors);
+      if (errMsg.includes('already exists')) {
+        return null;
+      }
+    }
+    throw err;
+  }
 }
 
 // 既存商品に画像を追加
@@ -95,7 +95,7 @@ async function createProduct(cert) {
 
   const product = {
     product: {
-      title: `${cert.subject} ${cert.year} ${cert.brand}`,
+      title: `${formatGrade(cert.grade)} ${cert.subject} ${cert.year} ${cert.brand}`,
       body_html: `
         <p><strong>Year:</strong> ${cert.year}</p>
         <p><strong>Brand:</strong> ${cert.brand}</p>
@@ -168,21 +168,70 @@ async function createProduct(cert) {
 
 // メイン処理: 同一カード名があればバリアント追加、なければ新規作成
 async function registerCert(cert) {
-  const title = `${cert.subject} ${cert.year} ${cert.brand}`;
-  const existing = await findProductByTitle(title);
+  const baseTitle = `${cert.subject} ${cert.year} ${cert.brand}`;
+  const existing = await findProductByBaseTitle(baseTitle);
 
   if (existing) {
     // 既存商品にバリアント（グレード + 鑑定番号）＋画像を追加
     const variant = await addVariant(existing.id, cert);
-    await setInventoryToOne(variant);
+    // グレード違いが追加された場合、タイトルからグレードを外す
+    if (existing.title !== baseTitle && existing.title.endsWith(baseTitle)) {
+      const client = getClient();
+      await client.put(`/products/${existing.id}.json`, {
+        product: { id: existing.id, title: baseTitle }
+      }).catch(() => {});
+    }
     await addImages(existing.id, cert);
     return { product: existing, variant, isNew: false };
   } else {
     // 新規商品を作成
     const product = await createProduct(cert);
-    await setInventoryToOne(product.variants[0]);
     return { product, variant: product.variants[0], isNew: true };
   }
 }
 
-module.exports = { registerCert };
+// Shopify上に商品が存在するか確認
+async function productExists(productId) {
+  const client = getClient();
+  try {
+    await client.get(`/products/${productId}.json`);
+    return true;
+  } catch (err) {
+    if (err.response && err.response.status === 404) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+// 鑑定番号がShopifyのバリアントとして存在するか確認
+async function variantExistsByCertNumber(certNumber) {
+  const client = getClient();
+  // Shopify全商品からバリアントを検索（鑑定番号はoption2に格納）
+  let url = '/products.json?limit=250';
+  while (url) {
+    const res = await client.get(url);
+    for (const product of res.data.products) {
+      for (const variant of product.variants) {
+        if (variant.option2 === certNumber || variant.option1 === certNumber) {
+          return true;
+        }
+      }
+    }
+    // ページネーション
+    const link = res.headers['link'];
+    if (link && link.includes('rel="next"')) {
+      const match = link.match(/<([^>]+)>;\s*rel="next"/);
+      if (match) {
+        url = match[1].replace(/^https?:\/\/[^/]+\/admin\/api\/[^/]+/, '');
+      } else {
+        url = null;
+      }
+    } else {
+      url = null;
+    }
+  }
+  return false;
+}
+
+module.exports = { registerCert, productExists, variantExistsByCertNumber };

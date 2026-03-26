@@ -4,7 +4,7 @@ const basicAuth = require('express-basic-auth');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const fs = require('fs');
-const { isAlreadyFetched, saveCert, getCert, getAllCerts } = require('./db/database');
+const { isAlreadyFetched, saveCert, getCert, getAllCerts, getCertsPaginated, clearShopifyId } = require('./db/database');
 const psa = require('./services/psa');
 const shopify = require('./services/shopify');
 
@@ -71,17 +71,103 @@ app.post('/api/cert/:certNumber', async (req, res) => {
     };
 
     // Shopify: 同一商品名があればバリアント追加、なければ新規作成
-    const result = await shopify.registerCert(certRecord);
-    certRecord.shopifyProductId = String(result.product.id);
+    let action = '';
+    try {
+      const result = await shopify.registerCert(certRecord);
+      certRecord.shopifyProductId = String(result.product.id);
+      action = result.isNew ? '新規商品を作成' : '既存商品にバリアントを追加';
+    } catch (shopifyErr) {
+      console.error('Shopifyエラー:', shopifyErr.response?.data || shopifyErr.message);
+      certRecord.shopifyProductId = '';
+      action = 'Shopify登録はスキップ（既に登録済みの可能性があります）';
+    }
 
-    // DBに保存
+    // DBに保存（Shopifyエラーでも保存する）
     saveCert(certRecord);
 
-    const action = result.isNew ? '新規商品を作成' : '既存商品にバリアントを追加';
-    res.json({ message: `${action}しました`, cert: certRecord, shopifyProductId: result.product.id });
+    res.json({ message: `${action}しました`, cert: certRecord });
   } catch (e) {
     console.error('エラー:', e.response?.data || e.message);
     res.status(500).json({ message: 'エラーが発生しました', error: e.message });
+  }
+});
+
+// Shopify連携（DBにあるカードをShopifyに登録）
+app.post('/api/shopify/sync/:certNumber', async (req, res) => {
+  const { certNumber } = req.params;
+
+  const cert = getCert(certNumber);
+  if (!cert) {
+    return res.status(404).json({ message: 'このカードはDBに登録されていません' });
+  }
+
+  // 連携済みの場合、Shopify側に商品が存在するか確認
+  if (cert.shopify_product_id) {
+    try {
+      const exists = await shopify.productExists(cert.shopify_product_id);
+      if (exists) {
+        return res.status(409).json({ message: 'このカードは既にShopifyに出品中です' });
+      }
+      // 商品が削除されている場合、連携をリセット
+      clearShopifyId(certNumber);
+    } catch (e) {
+      // 確認に失敗した場合もリセットして再連携を試行
+      clearShopifyId(certNumber);
+    }
+  }
+
+  try {
+    const certRecord = {
+      certNumber: cert.cert_number,
+      grade: cert.grade,
+      subject: cert.subject,
+      year: cert.year,
+      brand: cert.brand,
+      cardNumber: cert.card_number,
+      category: cert.category,
+      variety: cert.variety || '',
+      frontImageUrl: cert.front_image_url,
+      backImageUrl: cert.back_image_url,
+    };
+
+    const result = await shopify.registerCert(certRecord);
+    certRecord.shopifyProductId = String(result.product.id);
+
+    // DB更新
+    saveCert(certRecord);
+
+    const action = result.isNew ? '新規商品を作成' : '既存商品にバリアントを追加';
+    res.json({ message: `Shopifyに${action}しました` });
+  } catch (e) {
+    console.error('Shopify連携エラー:', e.response?.data || e.message);
+    res.status(500).json({ message: 'Shopifyへの連携に失敗しました' });
+  }
+});
+
+// Shopify出品状況を一括チェック
+app.post('/api/shopify/check', async (req, res) => {
+  const { certNumbers } = req.body;
+  if (!certNumbers || !Array.isArray(certNumbers)) {
+    return res.status(400).json({ message: 'certNumbers配列が必要です' });
+  }
+  const results = {};
+  for (const cn of certNumbers) {
+    try {
+      results[cn] = await shopify.variantExistsByCertNumber(cn);
+    } catch {
+      results[cn] = false;
+    }
+  }
+  res.json({ results });
+});
+
+// Shopify出品状況を単一チェック
+app.get('/api/shopify/check/:certNumber', async (req, res) => {
+  try {
+    const exists = await shopify.variantExistsByCertNumber(req.params.certNumber);
+    res.json({ exists });
+  } catch {
+    res.json({ exists: false });
   }
 });
 
@@ -200,10 +286,13 @@ app.post('/api/csv/process', async (req, res) => {
   res.json({ message: `完了: ${success}件登録, ${skipped}件スキップ, ${failed}件失敗`, results });
 });
 
-// 取得済み一覧
+// 取得済み一覧（ページネーション対応）
 app.get('/api/certs', (req, res) => {
-  const certs = getAllCerts();
-  res.json({ count: certs.length, certs });
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 50;
+  const search = req.query.search || '';
+  const { certs, total } = getCertsPaginated(page, limit, search);
+  res.json({ count: certs.length, total, page, limit, totalPages: Math.ceil(total / limit), certs });
 });
 
 // 取得済みチェック

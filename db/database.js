@@ -53,4 +53,20 @@ function getAllCerts() {
   return db.prepare('SELECT * FROM certs ORDER BY created_at DESC').all();
 }
 
-module.exports = { isAlreadyFetched, saveCert, getCert, getAllCerts };
+function getCertsPaginated(page, limit, search) {
+  const offset = (page - 1) * limit;
+  if (search) {
+    const count = db.prepare('SELECT COUNT(*) as total FROM certs WHERE cert_number LIKE ?').get(`%${search}%`);
+    const certs = db.prepare('SELECT * FROM certs WHERE cert_number LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(`%${search}%`, limit, offset);
+    return { certs, total: count.total };
+  }
+  const count = db.prepare('SELECT COUNT(*) as total FROM certs').get();
+  const certs = db.prepare('SELECT * FROM certs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset);
+  return { certs, total: count.total };
+}
+
+function clearShopifyId(certNumber) {
+  db.prepare('UPDATE certs SET shopify_product_id = NULL WHERE cert_number = ?').run(certNumber);
+}
+
+module.exports = { isAlreadyFetched, saveCert, getCert, getAllCerts, getCertsPaginated, clearShopifyId };

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PSA Card Manager</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -66,6 +67,22 @@
 
     .empty { text-align: center; padding: 40px; color: #aaa; }
 
+    .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .search-row input {
+      flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+    }
+    .search-row input:focus { outline: none; border-color: #4a6cf7; }
+
+    .shopify-btn {
+      padding: 4px 10px; background: #999; color: #fff; border: none; border-radius: 4px;
+      font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .shopify-btn:hover { background: #777; }
+    .shopify-btn:disabled { background: #ccc; cursor: not-allowed; }
+    .shopify-btn.synced { background: #4a6cf7; cursor: default; }
+    .shopify-btn.synced:hover { background: #4a6cf7; }
+    .shopify-btn.error { background: #c62828; }
+
     .csv-section { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
     .csv-section h2 { font-size: 16px; margin-bottom: 16px; }
     .csv-drop {
@@ -96,6 +113,123 @@
     .csv-results .result-item.success { color: #2e7d32; }
     .csv-results .result-item.skipped { color: #1565c0; }
     .csv-results .result-item.error { color: #c62828; }
+
+    /* バーコードスキャン（モバイルのみ表示） */
+    .scan-fab {
+      display: none;
+      position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+      width: 60px; height: 60px; border-radius: 50%;
+      background: #ff6b35; color: #fff; border: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer; font-size: 28px;
+      align-items: center; justify-content: center;
+      transition: transform 0.2s, background 0.3s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .scan-fab:active { transform: scale(0.95); }
+    .scan-fab.holding { background: #d14a1a; animation: pulse-ring 0.6s ease-out infinite; }
+    .scan-fab-progress {
+      position: absolute; top: -4px; left: -4px;
+      width: 68px; height: 68px;
+    }
+    .scan-fab-progress circle {
+      fill: none; stroke: #fff; stroke-width: 3;
+      stroke-dasharray: 196; stroke-dashoffset: 196;
+      transform: rotate(-90deg); transform-origin: center;
+      transition: stroke-dashoffset 0.5s linear;
+    }
+    .scan-fab.holding .scan-fab-progress circle {
+      stroke-dashoffset: 0;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 0 rgba(255,107,53,0.4); }
+      100% { box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 12px rgba(255,107,53,0); }
+    }
+
+    .scan-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 999; background: rgba(0,0,0,0.95);
+      flex-direction: column; align-items: center; justify-content: flex-start;
+      padding: 16px;
+    }
+    .scan-overlay.active { display: flex; }
+    .scan-overlay-header {
+      width: 100%; display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0 12px; color: #fff;
+    }
+    .scan-overlay-header h3 { font-size: 16px; font-weight: 600; }
+    .scan-close-btn {
+      background: #555; color: #fff; border: none; border-radius: 6px;
+      padding: 8px 16px; font-size: 14px; cursor: pointer;
+    }
+    #barcode-reader { width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; position: relative; }
+    #barcode-reader video { border-radius: 8px; }
+    .focus-indicator {
+      position: absolute; width: 60px; height: 60px;
+      border: 2px solid #fff; border-radius: 50%;
+      pointer-events: none; transform: translate(-50%, -50%) scale(1.5);
+      opacity: 1; transition: transform 0.3s ease-out, opacity 0.5s ease-out;
+    }
+    .focus-indicator.done {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0;
+    }
+    .scanned-list {
+      margin-top: 12px; width: 100%; max-width: 500px;
+      max-height: 140px; overflow-y: auto;
+    }
+    .scanned-list .scanned-item {
+      display: inline-block; background: rgba(255,255,255,0.15); color: #fff;
+      padding: 4px 10px; border-radius: 12px; margin: 3px 4px 3px 0; font-weight: 600; font-size: 13px;
+    }
+    .scan-done-btn {
+      margin-top: 12px; width: 100%; max-width: 500px; padding: 14px;
+      background: #4a6cf7; color: #fff; border: none; border-radius: 6px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .scan-count-badge {
+      position: absolute; top: -4px; right: -4px;
+      background: #4a6cf7; color: #fff; font-size: 12px; font-weight: 700;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      display: none;
+    }
+
+    /* レスポンシブ対応 */
+    @media (max-width: 768px) {
+      .scan-fab { display: flex; }
+      header { padding: 16px; }
+      header h1 { font-size: 18px; }
+
+      .container { margin: 16px auto; padding: 0 12px; }
+
+      .input-section, .csv-section, .table-section { padding: 16px; }
+
+      .input-row { flex-direction: column; }
+      .input-row button { width: 100%; padding: 12px; font-size: 16px; }
+
+      .stats { flex-direction: column; gap: 10px; }
+
+      .table-section { padding: 12px; overflow-x: auto; }
+      table { min-width: 600px; }
+
+      .csv-drop { padding: 20px; }
+      .csv-drop p { font-size: 13px; }
+
+      .csv-preview button { width: 100%; padding: 12px; font-size: 16px; }
+    }
+
+    @media (max-width: 480px) {
+      header h1 { font-size: 16px; }
+
+      .input-section h2, .csv-section h2, .table-section h2 { font-size: 14px; }
+
+      .stat-card .value { font-size: 20px; }
+
+      .img-thumb { width: 32px; height: 44px; }
+      .no-img { width: 32px; height: 44px; }
+    }
   </style>
 </head>
 <body>
@@ -144,6 +278,9 @@
 
     <div class="table-section">
       <h2>取得済みカード一覧</h2>
+      <div class="search-row">
+        <input type="text" id="certSearch" placeholder="鑑定番号で検索..." oninput="filterCerts()" />
+      </div>
       <table>
         <thead>
           <tr>
@@ -154,13 +291,35 @@
             <th>ブランド</th>
             <th>グレード</th>
             <th>登録日</th>
+            <th>Shopify</th>
           </tr>
         </thead>
         <tbody id="certTable">
-          <tr><td colspan="7" class="empty">データがありません</td></tr>
+          <tr><td colspan="8" class="empty">データがありません</td></tr>
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- FABボタン（モバイルのみ表示） -->
+  <button class="scan-fab" id="scanFab">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+      <circle cx="12" cy="13" r="4"/>
+    </svg>
+    <svg class="scan-fab-progress" viewBox="0 0 68 68"><circle cx="34" cy="34" r="31.2"/></svg>
+    <span class="scan-count-badge" id="scanCountBadge">0</span>
+  </button>
+
+  <!-- スキャンオーバーレイ -->
+  <div class="scan-overlay" id="scanOverlay">
+    <div class="scan-overlay-header">
+      <h3 id="scanTitle">バーコードスキャン</h3>
+      <button class="scan-close-btn" onclick="stopScan()">閉じる</button>
+    </div>
+    <div id="barcode-reader"></div>
+    <div class="scanned-list" id="scannedList"></div>
+    <button class="scan-done-btn" id="scanDoneBtn" onclick="finishScan()">読み取った番号を入力欄に反映</button>
   </div>
 
   <script>
@@ -169,6 +328,160 @@
     const statusEl = document.getElementById('status');
 
     // テキストエリアではEnterキーは改行のみ（実行はボタンクリック）
+
+    // --- バーコードスキャン機能（FAB長押し起動） ---
+    let html5QrCode = null;
+    let isScanning = false;
+    const scannedNumbers = new Set();
+    let holdTimer = null;
+    let holdStarted = false;
+
+    const scanFab = document.getElementById('scanFab');
+
+    function onHoldStart(e) {
+      e.preventDefault();
+      holdStarted = true;
+      scanFab.classList.add('holding');
+      holdTimer = setTimeout(() => {
+        scanFab.classList.remove('holding');
+        holdStarted = false;
+        startScan();
+      }, 500);
+    }
+
+    function onHoldEnd(e) {
+      e.preventDefault();
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      scanFab.classList.remove('holding');
+      holdStarted = false;
+    }
+
+    scanFab.addEventListener('touchstart', onHoldStart, { passive: false });
+    scanFab.addEventListener('touchend', onHoldEnd);
+    scanFab.addEventListener('touchcancel', onHoldEnd);
+    scanFab.addEventListener('mousedown', onHoldStart);
+    scanFab.addEventListener('mouseup', onHoldEnd);
+    scanFab.addEventListener('mouseleave', onHoldEnd);
+
+    function startScan() {
+      const overlay = document.getElementById('scanOverlay');
+      overlay.classList.add('active');
+      isScanning = true;
+      scannedNumbers.clear();
+      document.getElementById('scannedList').innerHTML = '';
+      updateScanCount();
+
+      html5QrCode = new Html5Qrcode('barcode-reader');
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        {
+          fps: 15,
+          disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.ITF,
+          ],
+        },
+        (decodedText) => {
+          const num = decodedText.replace(/\D/g, '');
+          if (num && !scannedNumbers.has(num)) {
+            scannedNumbers.add(num);
+            document.getElementById('scannedList').innerHTML +=
+              `<span class="scanned-item">${num}</span>`;
+            updateScanCount();
+            document.getElementById('scanTitle').textContent =
+              `バーコードスキャン（${scannedNumbers.size}件読取済）`;
+            // バイブレーション（対応端末のみ）
+            if (navigator.vibrate) navigator.vibrate(100);
+          }
+        },
+        () => {}
+      ).then(() => {
+        // カメラ起動後のフォーカス設定 + タップでリフォーカス
+        try {
+          const video = document.querySelector('#barcode-reader video');
+          if (video && video.srcObject) {
+            const track = video.srcObject.getVideoTracks()[0];
+            triggerRefocus(track);
+            // タップでピント合わせ
+            video.addEventListener('click', (e) => {
+              triggerRefocus(track);
+              // タップ位置にフォーカスインジケータを表示
+              showFocusIndicator(e, video);
+            });
+          }
+        } catch (e) { /* フォーカス設定非対応の場合は無視 */ }
+      }).catch((err) => {
+        showStatus('カメラの起動に失敗しました: ' + err, 'error');
+        stopScan();
+      });
+    }
+
+    function stopScan() {
+      if (html5QrCode && isScanning) {
+        html5QrCode.stop().then(() => {
+          html5QrCode.clear();
+        }).catch(() => {});
+      }
+      isScanning = false;
+      document.getElementById('scanOverlay').classList.remove('active');
+      document.getElementById('scanTitle').textContent = 'バーコードスキャン';
+    }
+
+    function finishScan() {
+      if (scannedNumbers.size > 0) {
+        const current = certInput.value.trim();
+        const newNumbers = Array.from(scannedNumbers).join('\n');
+        certInput.value = current ? current + '\n' + newNumbers : newNumbers;
+        showStatus(`${scannedNumbers.size}件の鑑定番号を入力欄に反映しました。「取得」ボタンで登録してください。`, 'info');
+      }
+      stopScan();
+    }
+
+    function triggerRefocus(track) {
+      try {
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.focusMode && caps.focusMode.includes('manual') && caps.focusMode.includes('continuous')) {
+          track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => {
+            setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }), 100);
+          }).catch(() => {});
+        } else if (caps.focusMode && caps.focusMode.includes('continuous')) {
+          track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+        }
+      } catch (e) {}
+    }
+
+    function showFocusIndicator(e, video) {
+      const rect = video.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const indicator = document.createElement('div');
+      indicator.className = 'focus-indicator';
+      indicator.style.left = x + 'px';
+      indicator.style.top = y + 'px';
+      video.parentElement.appendChild(indicator);
+      requestAnimationFrame(() => indicator.classList.add('done'));
+      setTimeout(() => indicator.remove(), 800);
+    }
+
+    function updateScanCount() {
+      const badge = document.getElementById('scanCountBadge');
+      if (scannedNumbers.size > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = scannedNumbers.size;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
 
     function showStatus(msg, type) {
       statusEl.textContent = msg;
@@ -258,31 +571,126 @@
       loadCerts();
     }
 
-    async function loadCerts() {
+    let currentPage = 1;
+    const PAGE_LIMIT = 50;
+    let totalPages = 1;
+    let searchTimer = null;
+
+    async function loadCerts(page, search) {
+      page = page || currentPage;
+      search = search !== undefined ? search : document.getElementById('certSearch').value.trim();
       try {
-        const res = await fetch('/api/certs');
+        const params = new URLSearchParams({ page, limit: PAGE_LIMIT });
+        if (search) params.set('search', search);
+        const res = await fetch('/api/certs?' + params);
         const data = await res.json();
-        document.getElementById('totalCount').textContent = data.count;
-
-        const tbody = document.getElementById('certTable');
-        if (data.count === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty">データがありません</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = data.certs.map(c => `
-          <tr>
-            <td>${c.front_image_url ? `<img class="img-thumb" src="${c.front_image_url}" alt="front" />` : '<div class="no-img">N/A</div>'}</td>
-            <td>${c.cert_number}</td>
-            <td>${c.subject}</td>
-            <td>${c.year}</td>
-            <td>${c.brand}</td>
-            <td><span class="grade-badge">${c.grade}</span></td>
-            <td>${c.created_at ? c.created_at.split(' ')[0] : '-'}</td>
-          </tr>
-        `).join('');
+        document.getElementById('totalCount').textContent = data.total;
+        currentPage = data.page;
+        totalPages = data.totalPages;
+        renderCerts(data.certs);
+        renderPagination();
       } catch (e) {
         console.error('Failed to load certs', e);
+      }
+    }
+
+    function filterCerts() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadCerts(1), 300);
+    }
+
+    function renderCerts(certs) {
+      const tbody = document.getElementById('certTable');
+      if (certs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">データがありません</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = certs.map(c => {
+        const synced = !!c.shopify_product_id;
+        return `
+        <tr>
+          <td>${c.front_image_url ? `<img class="img-thumb" src="${c.front_image_url}" alt="front" />` : '<div class="no-img">N/A</div>'}</td>
+          <td>${c.cert_number}</td>
+          <td>${c.subject}</td>
+          <td>${c.year}</td>
+          <td>${c.brand}</td>
+          <td><span class="grade-badge">${c.grade}</span></td>
+          <td>${c.created_at ? c.created_at.split(' ')[0] : '-'}</td>
+          <td><button class="shopify-btn${synced ? ' synced' : ''}" id="sync-${c.cert_number}"
+            onclick="${synced ? `verifySynced('${c.cert_number}', this)` : `syncToShopify('${c.cert_number}', this)`}">${synced ? '連携済' : '連携する'}</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function verifySynced(certNumber, btn) {
+      btn.disabled = true;
+      btn.textContent = '確認中...';
+      try {
+        const res = await fetch('/api/shopify/check/' + certNumber);
+        const data = await res.json();
+        if (data.exists) {
+          btn.textContent = '連携済';
+          btn.className = 'shopify-btn synced';
+          btn.disabled = false;
+          showStatus('Cert# ' + certNumber + ' はShopifyに出品中です', 'info');
+        } else {
+          btn.textContent = '連携する';
+          btn.className = 'shopify-btn';
+          btn.disabled = false;
+          btn.onclick = () => syncToShopify(certNumber, btn);
+          showStatus('Cert# ' + certNumber + ' はShopifyから削除されています。再連携できます。', 'error');
+        }
+      } catch (e) {
+        btn.textContent = '連携済';
+        btn.disabled = false;
+        showStatus('確認に失敗しました', 'error');
+      }
+    }
+
+    function renderPagination() {
+      let el = document.getElementById('pagination');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'pagination';
+        el.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:8px;margin-top:16px;font-size:14px;';
+        document.querySelector('.table-section').appendChild(el);
+      }
+      if (totalPages <= 1) { el.innerHTML = ''; return; }
+      let html = `<button onclick="loadCerts(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} style="padding:6px 12px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer;">前</button>`;
+      html += `<span>${currentPage} / ${totalPages}</span>`;
+      html += `<button onclick="loadCerts(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} style="padding:6px 12px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer;">次</button>`;
+      el.innerHTML = html;
+    }
+
+    async function syncToShopify(certNumber, btn) {
+      btn.disabled = true;
+      btn.textContent = '処理中...';
+      try {
+        const res = await fetch('/api/shopify/sync/' + certNumber, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          btn.textContent = '連携済';
+          btn.className = 'shopify-btn synced';
+          btn.onclick = () => showStatus('このカードは既にShopifyに出品中です', 'info');
+          showStatus(data.message, 'success');
+        } else if (res.status === 409) {
+          btn.textContent = '連携済';
+          btn.className = 'shopify-btn synced';
+          btn.disabled = false;
+          btn.onclick = () => showStatus('このカードは既にShopifyに出品中です', 'info');
+          showStatus(data.message, 'info');
+        } else {
+          btn.textContent = '連携する';
+          btn.className = 'shopify-btn';
+          btn.disabled = false;
+          showStatus(data.message, 'error');
+        }
+      } catch (e) {
+        btn.textContent = '連携する';
+        btn.className = 'shopify-btn';
+        btn.disabled = false;
+        showStatus('通信エラー', 'error');
       }
     }
 
