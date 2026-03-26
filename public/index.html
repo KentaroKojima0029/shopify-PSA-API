@@ -17,16 +17,26 @@
     .input-section h2 { font-size: 16px; margin-bottom: 16px; }
 
     .input-row { display: flex; gap: 10px; }
-    .input-row input {
+    .input-row textarea {
       flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+      resize: vertical; min-height: 44px; font-family: inherit;
     }
-    .input-row input:focus { outline: none; border-color: #4a6cf7; }
+    .input-row textarea:focus { outline: none; border-color: #4a6cf7; }
     .input-row button {
       padding: 10px 24px; background: #4a6cf7; color: #fff; border: none; border-radius: 6px;
-      font-size: 14px; cursor: pointer; white-space: nowrap;
+      font-size: 14px; cursor: pointer; white-space: nowrap; align-self: flex-start;
     }
     .input-row button:hover { background: #3b5de7; }
     .input-row button:disabled { background: #aaa; cursor: not-allowed; }
+
+    .batch-progress { margin-top: 12px; display: none; }
+    .batch-progress .progress-bar { display: block; }
+    .batch-progress .progress-text { display: block; }
+    .batch-results { margin-top: 8px; font-size: 13px; max-height: 200px; overflow-y: auto; }
+    .batch-results .result-item { padding: 3px 0; }
+    .batch-results .result-item.success { color: #2e7d32; }
+    .batch-results .result-item.skipped { color: #1565c0; }
+    .batch-results .result-item.error { color: #c62828; }
 
     .status { margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; display: none; }
     .status.success { display: block; background: #e8f5e9; color: #2e7d32; }
@@ -97,10 +107,15 @@
     <div class="input-section">
       <h2>PSA鑑定番号を入力</h2>
       <div class="input-row">
-        <input type="text" id="certInput" placeholder="鑑定番号を入力（例: 10000001）" />
+        <textarea id="certInput" rows="2" placeholder="鑑定番号を入力（例: 10000001, 10000002, 10000003）&#10;カンマ・スペース・改行で区切って複数入力可"></textarea>
         <button id="fetchBtn" onclick="fetchCert()">取得</button>
       </div>
       <div class="status" id="status"></div>
+      <div class="batch-progress" id="batchProgress">
+        <div class="progress-bar"><div class="fill" id="batchFill"></div></div>
+        <div class="progress-text" id="batchText"></div>
+        <div class="batch-results" id="batchResults"></div>
+      </div>
     </div>
 
     <div class="csv-section">
@@ -153,39 +168,89 @@
     const fetchBtn = document.getElementById('fetchBtn');
     const statusEl = document.getElementById('status');
 
-    certInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') fetchCert();
-    });
+    // テキストエリアではEnterキーは改行のみ（実行はボタンクリック）
 
     function showStatus(msg, type) {
       statusEl.textContent = msg;
       statusEl.className = 'status ' + type;
     }
 
+    function parseCertNumbers(input) {
+      return input.split(/[\s,、\n\r]+/).map(s => s.trim()).filter(s => s && /^\d+$/.test(s));
+    }
+
     async function fetchCert() {
-      const certNumber = certInput.value.trim();
-      if (!certNumber) { showStatus('鑑定番号を入力してください', 'error'); return; }
+      const certNumbers = parseCertNumbers(certInput.value);
+      if (certNumbers.length === 0) { showStatus('鑑定番号を入力してください', 'error'); return; }
 
       fetchBtn.disabled = true;
-      fetchBtn.textContent = '取得中...';
-      showStatus('PSA APIに問い合わせ中...', 'info');
 
-      try {
-        const res = await fetch('/api/cert/' + certNumber, { method: 'POST' });
-        const data = await res.json();
+      if (certNumbers.length === 1) {
+        // 単一処理
+        fetchBtn.textContent = '取得中...';
+        showStatus('PSA APIに問い合わせ中...', 'info');
+        document.getElementById('batchProgress').style.display = 'none';
 
-        if (res.ok) {
-          if (data.message === '取得済みの番号です') {
-            showStatus('この番号は取得済みです（APIリクエストは消費していません）', 'info');
+        try {
+          const res = await fetch('/api/cert/' + certNumbers[0], { method: 'POST' });
+          const data = await res.json();
+
+          if (res.ok) {
+            if (data.message === '取得済みの番号です') {
+              showStatus('この番号は取得済みです（APIリクエストは消費していません）', 'info');
+            } else {
+              showStatus('取得・登録完了しました', 'success');
+              certInput.value = '';
+            }
           } else {
-            showStatus('取得・登録完了しました', 'success');
-            certInput.value = '';
+            showStatus(data.message || 'エラーが発生しました', 'error');
           }
-        } else {
-          showStatus(data.message || 'エラーが発生しました', 'error');
+        } catch (e) {
+          showStatus('通信エラーが発生しました', 'error');
         }
-      } catch (e) {
-        showStatus('通信エラーが発生しました', 'error');
+      } else {
+        // 複数処理
+        fetchBtn.textContent = '処理中...';
+        showStatus(`${certNumbers.length}件の鑑定番号を処理します...`, 'info');
+
+        const batchProgress = document.getElementById('batchProgress');
+        const batchFill = document.getElementById('batchFill');
+        const batchText = document.getElementById('batchText');
+        const batchResults = document.getElementById('batchResults');
+
+        batchProgress.style.display = 'block';
+        batchFill.style.width = '0%';
+        batchResults.innerHTML = '';
+
+        const total = certNumbers.length;
+        let processed = 0;
+        let successCount = 0;
+
+        for (const certNumber of certNumbers) {
+          batchText.textContent = `${processed + 1} / ${total} 処理中... (Cert# ${certNumber})`;
+
+          try {
+            const res = await fetch('/api/cert/' + certNumber, { method: 'POST' });
+            const data = await res.json();
+
+            if (res.ok) {
+              const isSkipped = data.message === '取得済みの番号です';
+              batchResults.innerHTML += `<div class="result-item ${isSkipped ? 'skipped' : 'success'}">Cert# ${certNumber}: ${data.message}</div>`;
+              if (!isSkipped) successCount++;
+            } else {
+              batchResults.innerHTML += `<div class="result-item error">Cert# ${certNumber}: ${data.message}</div>`;
+            }
+          } catch (e) {
+            batchResults.innerHTML += `<div class="result-item error">Cert# ${certNumber}: 通信エラー</div>`;
+          }
+
+          processed++;
+          batchFill.style.width = (processed / total * 100) + '%';
+        }
+
+        batchText.textContent = `完了: ${total}件処理 / ${successCount}件新規登録`;
+        showStatus(`${total}件の処理が完了しました`, 'success');
+        certInput.value = '';
       }
 
       fetchBtn.disabled = false;
