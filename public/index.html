@@ -118,38 +118,26 @@
     .scan-fab {
       display: none;
       position: fixed; bottom: 24px; right: 24px; z-index: 1000;
-      width: 60px; height: 60px; border-radius: 50%;
+      width: 64px; height: 64px; border-radius: 50%;
       background: #ff6b35; color: #fff; border: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      cursor: pointer; font-size: 28px;
+      box-shadow: 0 4px 16px rgba(255,107,53,0.5);
+      cursor: pointer;
       align-items: center; justify-content: center;
-      transition: transform 0.2s, background 0.3s;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
-    .scan-fab:active { transform: scale(0.95); }
-    .scan-fab.holding { background: #d14a1a; animation: pulse-ring 0.6s ease-out infinite; }
-    .scan-fab-progress {
-      position: absolute; top: -4px; left: -4px;
-      width: 68px; height: 68px;
-    }
-    .scan-fab-progress circle {
-      fill: none; stroke: #fff; stroke-width: 3;
-      stroke-dasharray: 196; stroke-dashoffset: 196;
-      transform: rotate(-90deg); transform-origin: center;
-      transition: stroke-dashoffset 0.5s linear;
-    }
-    .scan-fab.holding .scan-fab-progress circle {
-      stroke-dashoffset: 0;
-    }
-    @keyframes pulse-ring {
-      0% { box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 0 rgba(255,107,53,0.4); }
-      100% { box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 12px rgba(255,107,53,0); }
+    .scan-fab:active { opacity: 0.85; transform: scale(0.95); }
+    .scan-count-badge {
+      position: absolute; top: -4px; right: -4px;
+      background: #4a6cf7; color: #fff; font-size: 12px; font-weight: 700;
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      display: none;
     }
 
     .scan-overlay {
       display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 999; background: rgba(0,0,0,0.95);
+      z-index: 999; background: #000;
       flex-direction: column; align-items: center; justify-content: flex-start;
       padding: 16px;
     }
@@ -160,41 +148,46 @@
     }
     .scan-overlay-header h3 { font-size: 16px; font-weight: 600; }
     .scan-close-btn {
-      background: #555; color: #fff; border: none; border-radius: 6px;
-      padding: 8px 16px; font-size: 14px; cursor: pointer;
+      background: #444; color: #fff; border: none; border-radius: 6px;
+      padding: 10px 20px; font-size: 15px; cursor: pointer;
     }
     #barcode-reader { width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; position: relative; }
-    #barcode-reader video { border-radius: 8px; }
-    .focus-indicator {
-      position: absolute; width: 60px; height: 60px;
-      border: 2px solid #fff; border-radius: 50%;
-      pointer-events: none; transform: translate(-50%, -50%) scale(1.5);
-      opacity: 1; transition: transform 0.3s ease-out, opacity 0.5s ease-out;
+    #barcode-reader video { width: 100%; border-radius: 8px; display: block; }
+    .scan-loading {
+      width: 100%; max-width: 500px; height: 240px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #aaa; font-size: 14px; gap: 12px;
     }
-    .focus-indicator.done {
-      transform: translate(-50%, -50%) scale(1);
-      opacity: 0;
+    .scan-loading-spinner {
+      width: 36px; height: 36px; border: 3px solid #444; border-top-color: #ff6b35;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .scan-guide {
+      width: 100%; max-width: 500px; text-align: center;
+      color: #aaa; font-size: 12px; margin-top: 8px;
     }
     .scanned-list {
       margin-top: 12px; width: 100%; max-width: 500px;
-      max-height: 140px; overflow-y: auto;
+      max-height: 120px; overflow-y: auto;
     }
     .scanned-list .scanned-item {
       display: inline-block; background: rgba(255,255,255,0.15); color: #fff;
       padding: 4px 10px; border-radius: 12px; margin: 3px 4px 3px 0; font-weight: 600; font-size: 13px;
     }
     .scan-done-btn {
-      margin-top: 12px; width: 100%; max-width: 500px; padding: 14px;
-      background: #4a6cf7; color: #fff; border: none; border-radius: 6px;
+      margin-top: 12px; width: 100%; max-width: 500px; padding: 16px;
+      background: #4a6cf7; color: #fff; border: none; border-radius: 8px;
       font-size: 16px; font-weight: 600; cursor: pointer;
     }
-    .scan-count-badge {
-      position: absolute; top: -4px; right: -4px;
-      background: #4a6cf7; color: #fff; font-size: 12px; font-weight: 700;
-      width: 22px; height: 22px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      display: none;
+    .scan-done-btn:disabled { background: #555; }
+    .focus-indicator {
+      position: absolute; width: 60px; height: 60px;
+      border: 2px solid #fff; border-radius: 50%;
+      pointer-events: none; transform: translate(-50%, -50%) scale(1.5);
+      opacity: 1; transition: transform 0.3s ease-out, opacity 0.5s ease-out;
     }
+    .focus-indicator.done { transform: translate(-50%, -50%) scale(1); opacity: 0; }
 
     /* レスポンシブ対応 */
     @media (max-width: 768px) {
@@ -302,12 +295,11 @@
   </div>
 
   <!-- FABボタン（モバイルのみ表示） -->
-  <button class="scan-fab" id="scanFab">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <button class="scan-fab" id="scanFab" onclick="startScan()">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
       <circle cx="12" cy="13" r="4"/>
     </svg>
-    <svg class="scan-fab-progress" viewBox="0 0 68 68"><circle cx="34" cy="34" r="31.2"/></svg>
     <span class="scan-count-badge" id="scanCountBadge">0</span>
   </button>
 
@@ -317,9 +309,14 @@
       <h3 id="scanTitle">バーコードスキャン</h3>
       <button class="scan-close-btn" onclick="stopScan()">閉じる</button>
     </div>
-    <div id="barcode-reader"></div>
+    <div id="scan-loading" class="scan-loading">
+      <div class="scan-loading-spinner"></div>
+      <span>カメラ起動中...</span>
+    </div>
+    <div id="barcode-reader" style="display:none;"></div>
+    <p class="scan-guide" id="scanGuide" style="display:none;">バーコードを枠内に合わせてください</p>
     <div class="scanned-list" id="scannedList"></div>
-    <button class="scan-done-btn" id="scanDoneBtn" onclick="finishScan()">読み取った番号を入力欄に反映</button>
+    <button class="scan-done-btn" id="scanDoneBtn" onclick="finishScan()" disabled>読み取った番号を入力欄に反映</button>
   </div>
 
   <script>
@@ -329,123 +326,115 @@
 
     // テキストエリアではEnterキーは改行のみ（実行はボタンクリック）
 
-    // --- バーコードスキャン機能（FAB長押し起動） ---
+    // --- バーコードスキャン機能（ワンタップ起動） ---
     let html5QrCode = null;
     let isScanning = false;
     const scannedNumbers = new Set();
-    let holdTimer = null;
-    let holdStarted = false;
-
-    const scanFab = document.getElementById('scanFab');
-
-    function onHoldStart(e) {
-      e.preventDefault();
-      holdStarted = true;
-      scanFab.classList.add('holding');
-      holdTimer = setTimeout(() => {
-        scanFab.classList.remove('holding');
-        holdStarted = false;
-        startScan();
-      }, 500);
-    }
-
-    function onHoldEnd(e) {
-      e.preventDefault();
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      scanFab.classList.remove('holding');
-      holdStarted = false;
-    }
-
-    scanFab.addEventListener('touchstart', onHoldStart, { passive: false });
-    scanFab.addEventListener('touchend', onHoldEnd);
-    scanFab.addEventListener('touchcancel', onHoldEnd);
-    scanFab.addEventListener('mousedown', onHoldStart);
-    scanFab.addEventListener('mouseup', onHoldEnd);
-    scanFab.addEventListener('mouseleave', onHoldEnd);
 
     function startScan() {
-      const overlay = document.getElementById('scanOverlay');
-      overlay.classList.add('active');
+      document.getElementById('scanOverlay').classList.add('active');
+      document.getElementById('scan-loading').style.display = 'flex';
+      document.getElementById('barcode-reader').style.display = 'none';
+      document.getElementById('scanGuide').style.display = 'none';
+      document.getElementById('scanDoneBtn').disabled = true;
       isScanning = true;
       scannedNumbers.clear();
       document.getElementById('scannedList').innerHTML = '';
       updateScanCount();
+      document.getElementById('scanTitle').textContent = 'バーコードスキャン';
 
       html5QrCode = new Html5Qrcode('barcode-reader');
-      html5QrCode.start(
-        {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        {
-          fps: 25,
-          qrbox: { width: 300, height: 120 },
-          disableFlip: false,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-          ],
-        },
-        (decodedText) => {
-          const num = decodedText.replace(/\D/g, '');
-          if (num && !scannedNumbers.has(num)) {
-            scannedNumbers.add(num);
-            document.getElementById('scannedList').innerHTML +=
-              `<span class="scanned-item">${num}</span>`;
-            updateScanCount();
-            document.getElementById('scanTitle').textContent =
-              `バーコードスキャン（${scannedNumbers.size}件読取済）`;
-            // バイブレーション（対応端末のみ）
-            if (navigator.vibrate) navigator.vibrate(100);
+
+      const config = {
+        fps: 25,
+        qrbox: { width: 280, height: 110 },
+        disableFlip: false,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
+      };
+
+      // 解像度を段階的に試みる
+      const constraints = [
+        { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        { facingMode: 'environment' },
+      ];
+
+      function tryStart(index) {
+        if (index >= constraints.length) {
+          showStatus('カメラを起動できませんでした。ブラウザの設定でカメラを許可してください。', 'error');
+          stopScan();
+          return;
+        }
+        html5QrCode.start(constraints[index], config, onScanSuccess, () => {})
+          .then(() => onCameraReady())
+          .catch(() => {
+            html5QrCode.clear();
+            html5QrCode = new Html5Qrcode('barcode-reader');
+            tryStart(index + 1);
+          });
+      }
+
+      tryStart(0);
+    }
+
+    function onCameraReady() {
+      document.getElementById('scan-loading').style.display = 'none';
+      document.getElementById('barcode-reader').style.display = 'block';
+      document.getElementById('scanGuide').style.display = 'block';
+      document.getElementById('scanDoneBtn').disabled = false;
+      try {
+        const video = document.querySelector('#barcode-reader video');
+        if (video && video.srcObject) {
+          const track = video.srcObject.getVideoTracks()[0];
+          // オートフォーカス設定
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (caps.focusMode && caps.focusMode.includes('continuous')) {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
           }
-        },
-        () => {}
-      ).then(() => {
-        // カメラ起動後のフォーカス設定 + タップでリフォーカス
-        try {
-          const video = document.querySelector('#barcode-reader video');
-          if (video && video.srcObject) {
-            const track = video.srcObject.getVideoTracks()[0];
-            triggerRefocus(track);
-            // ライト（トーチ）が使える場合は自動点灯
-            const caps = track.getCapabilities ? track.getCapabilities() : {};
-            if (caps.torch) {
-              track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
+          // トーチ自動点灯
+          if (caps.torch) {
+            track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
+          }
+          // タップでリフォーカス
+          video.addEventListener('click', (e) => {
+            if (caps.focusMode && caps.focusMode.includes('manual') && caps.focusMode.includes('continuous')) {
+              track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => {
+                setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }), 80);
+              }).catch(() => {});
             }
-            // タップでピント合わせ
-            video.addEventListener('click', (e) => {
-              triggerRefocus(track);
-              // タップ位置にフォーカスインジケータを表示
-              showFocusIndicator(e, video);
-            });
-          }
-        } catch (e) { /* フォーカス設定非対応の場合は無視 */ }
-      }).catch((err) => {
-        showStatus('カメラの起動に失敗しました: ' + err, 'error');
-        stopScan();
-      });
+            showFocusIndicator(e, video);
+          });
+        }
+      } catch (e) {}
+    }
+
+    function onScanSuccess(decodedText) {
+      const num = decodedText.replace(/\D/g, '');
+      if (num && !scannedNumbers.has(num)) {
+        scannedNumbers.add(num);
+        document.getElementById('scannedList').innerHTML +=
+          `<span class="scanned-item">${num}</span>`;
+        updateScanCount();
+        document.getElementById('scanTitle').textContent =
+          `スキャン済み ${scannedNumbers.size}件`;
+        if (navigator.vibrate) navigator.vibrate(80);
+      }
     }
 
     function stopScan() {
-      if (html5QrCode && isScanning) {
-        // トーチを消灯してから停止
+      if (html5QrCode) {
         try {
           const video = document.querySelector('#barcode-reader video');
           if (video && video.srcObject) {
             const track = video.srcObject.getVideoTracks()[0];
             const caps = track.getCapabilities ? track.getCapabilities() : {};
-            if (caps.torch) {
-              track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
-            }
+            if (caps.torch) track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
           }
         } catch (e) {}
-        html5QrCode.stop().then(() => {
-          html5QrCode.clear();
-        }).catch(() => {});
+        if (isScanning) {
+          html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+        }
+        html5QrCode = null;
       }
       isScanning = false;
       document.getElementById('scanOverlay').classList.remove('active');
@@ -457,22 +446,9 @@
         const current = certInput.value.trim();
         const newNumbers = Array.from(scannedNumbers).join('\n');
         certInput.value = current ? current + '\n' + newNumbers : newNumbers;
-        showStatus(`${scannedNumbers.size}件の鑑定番号を入力欄に反映しました。「取得」ボタンで登録してください。`, 'info');
+        showStatus(`${scannedNumbers.size}件を入力欄に反映しました。「取得」ボタンで登録してください。`, 'info');
       }
       stopScan();
-    }
-
-    function triggerRefocus(track) {
-      try {
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
-        if (caps.focusMode && caps.focusMode.includes('manual') && caps.focusMode.includes('continuous')) {
-          track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => {
-            setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }), 100);
-          }).catch(() => {});
-        } else if (caps.focusMode && caps.focusMode.includes('continuous')) {
-          track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
-        }
-      } catch (e) {}
     }
 
     function showFocusIndicator(e, video) {
