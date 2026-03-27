@@ -26,6 +26,27 @@ function formatGrade(grade) {
   return 'Other';
 }
 
+// ロケーションIDを取得（最初の1件）
+let cachedLocationId = null;
+async function getLocationId() {
+  if (cachedLocationId) return cachedLocationId;
+  const client = getClient();
+  const res = await client.get('/locations.json');
+  cachedLocationId = res.data.locations[0].id;
+  return cachedLocationId;
+}
+
+// 在庫を1にセット
+async function setInventory(inventoryItemId, quantity = 1) {
+  const client = getClient();
+  const locationId = await getLocationId();
+  await client.post('/inventory_levels/set.json', {
+    inventory_item_id: inventoryItemId,
+    location_id: locationId,
+    available: quantity,
+  });
+}
+
 // 既存商品にバリアント（グレード + 鑑定番号）を追加
 async function addVariant(productId, cert) {
   const client = getClient();
@@ -35,10 +56,12 @@ async function addVariant(productId, cert) {
         option1: formatGrade(cert.grade),
         option2: cert.certNumber,
         inventory_management: 'shopify',
-        inventory_quantity: 1,
       },
     });
-    return res.data.variant;
+    const variant = res.data.variant;
+    // inventory_levels/set で在庫を1にセット
+    await setInventory(variant.inventory_item_id, 1);
+    return variant;
   } catch (err) {
     // バリアントが既に存在する場合はスキップ
     if (err.response && err.response.data && err.response.data.errors) {
@@ -139,7 +162,6 @@ async function createProduct(cert) {
           option1: formatGrade(cert.grade),
           option2: cert.certNumber,
           inventory_management: 'shopify',
-          inventory_quantity: 1,
         },
       ],
       images,
@@ -147,7 +169,12 @@ async function createProduct(cert) {
   };
 
   const res = await client.post('/products.json', product);
-  return res.data.product;
+  const createdProduct = res.data.product;
+  // 新規商品の初期バリアントも inventory_levels/set で在庫を1にセット
+  if (createdProduct.variants && createdProduct.variants[0]) {
+    await setInventory(createdProduct.variants[0].inventory_item_id, 1);
+  }
+  return createdProduct;
 }
 
 // メイン処理: 同一カード名があればバリアント追加、なければ新規作成
