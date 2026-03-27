@@ -134,7 +134,6 @@
       display: flex; align-items: center; justify-content: center;
       display: none;
     }
-
     .scan-overlay {
       display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       z-index: 999; background: #000;
@@ -151,25 +150,34 @@
       background: #444; color: #fff; border: none; border-radius: 6px;
       padding: 10px 20px; font-size: 15px; cursor: pointer;
     }
-    #barcode-reader { width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; position: relative; }
-    #barcode-reader video { width: 100%; border-radius: 8px; display: block; }
-    .scan-loading {
-      width: 100%; max-width: 500px; height: 240px;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: #aaa; font-size: 14px; gap: 12px;
+    .scan-viewport {
+      position: relative; width: 100%; max-width: 500px;
+      background: #111; border-radius: 8px; overflow: hidden; min-height: 200px;
     }
-    .scan-loading-spinner {
-      width: 36px; height: 36px; border: 3px solid #444; border-top-color: #ff6b35;
+    #scan-video { width: 100%; display: block; border-radius: 8px; }
+    /* html5-qrcodeフォールバック用（常に表示状態を維持） */
+    #barcode-reader { width: 100%; max-width: 500px; }
+    #barcode-reader video { width: 100% !important; }
+    .scan-frame {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 280px; height: 110px;
+      border: 2px solid #ff6b35; border-radius: 4px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
+    .scan-loading-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #aaa; font-size: 14px; gap: 12px; border-radius: 8px;
+    }
+    .scan-spinner {
+      width: 36px; height: 36px; border: 3px solid #333; border-top-color: #ff6b35;
       border-radius: 50%; animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .scan-guide {
-      width: 100%; max-width: 500px; text-align: center;
-      color: #aaa; font-size: 12px; margin-top: 8px;
-    }
     .scanned-list {
-      margin-top: 12px; width: 100%; max-width: 500px;
-      max-height: 120px; overflow-y: auto;
+      margin-top: 12px; width: 100%; max-width: 500px; max-height: 120px; overflow-y: auto;
     }
     .scanned-list .scanned-item {
       display: inline-block; background: rgba(255,255,255,0.15); color: #fff;
@@ -180,14 +188,7 @@
       background: #4a6cf7; color: #fff; border: none; border-radius: 8px;
       font-size: 16px; font-weight: 600; cursor: pointer;
     }
-    .scan-done-btn:disabled { background: #555; }
-    .focus-indicator {
-      position: absolute; width: 60px; height: 60px;
-      border: 2px solid #fff; border-radius: 50%;
-      pointer-events: none; transform: translate(-50%, -50%) scale(1.5);
-      opacity: 1; transition: transform 0.3s ease-out, opacity 0.5s ease-out;
-    }
-    .focus-indicator.done { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+    .scan-done-btn:disabled { background: #555; cursor: default; }
 
     /* レスポンシブ対応 */
     @media (max-width: 768px) {
@@ -309,12 +310,17 @@
       <h3 id="scanTitle">バーコードスキャン</h3>
       <button class="scan-close-btn" onclick="stopScan()">閉じる</button>
     </div>
-    <div id="scan-loading" class="scan-loading">
-      <div class="scan-loading-spinner"></div>
-      <span>カメラ起動中...</span>
+    <!-- ネイティブ映像 + ローディング -->
+    <div class="scan-viewport" id="scanViewport">
+      <video id="scan-video" autoplay playsinline muted></video>
+      <div class="scan-frame" id="scanFrame" style="display:none;"></div>
+      <div class="scan-loading-overlay" id="scanLoadingOverlay">
+        <div class="scan-spinner"></div>
+        <span>カメラ起動中...</span>
+      </div>
     </div>
-    <div id="barcode-reader" style="display:none;"></div>
-    <p class="scan-guide" id="scanGuide" style="display:none;">バーコードを枠内に合わせてください</p>
+    <!-- html5-qrcode フォールバック用（常にDOM上に存在させる） -->
+    <div id="barcode-reader" style="display:none; width:100%; max-width:500px;"></div>
     <div class="scanned-list" id="scannedList"></div>
     <button class="scan-done-btn" id="scanDoneBtn" onclick="finishScan()" disabled>読み取った番号を入力欄に反映</button>
   </div>
@@ -326,117 +332,112 @@
 
     // テキストエリアではEnterキーは改行のみ（実行はボタンクリック）
 
-    // --- バーコードスキャン機能（ワンタップ起動） ---
-    let html5QrCode = null;
+    // --- バーコードスキャン機能 ---
     let isScanning = false;
+    let scanStream = null;
+    let scanAnimFrame = null;
+    let html5QrCode = null;
     const scannedNumbers = new Set();
 
     function startScan() {
       document.getElementById('scanOverlay').classList.add('active');
-      document.getElementById('scan-loading').style.display = 'flex';
-      document.getElementById('barcode-reader').style.display = 'none';
-      document.getElementById('scanGuide').style.display = 'none';
+      document.getElementById('scanLoadingOverlay').style.display = 'flex';
+      document.getElementById('scanFrame').style.display = 'none';
       document.getElementById('scanDoneBtn').disabled = true;
+      document.getElementById('scanTitle').textContent = 'バーコードスキャン';
+      document.getElementById('scan-video').style.display = 'none';
+      document.getElementById('barcode-reader').style.display = 'none';
       isScanning = true;
       scannedNumbers.clear();
       document.getElementById('scannedList').innerHTML = '';
       updateScanCount();
-      document.getElementById('scanTitle').textContent = 'バーコードスキャン';
 
-      html5QrCode = new Html5Qrcode('barcode-reader');
-
-      const config = {
-        fps: 25,
-        qrbox: { width: 280, height: 110 },
-        disableFlip: false,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-      };
-
-      // 解像度を段階的に試みる
-      const constraints = [
-        { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        { facingMode: 'environment' },
-      ];
-
-      function tryStart(index) {
-        if (index >= constraints.length) {
-          showStatus('カメラを起動できませんでした。ブラウザの設定でカメラを許可してください。', 'error');
-          stopScan();
-          return;
-        }
-        html5QrCode.start(constraints[index], config, onScanSuccess, () => {})
-          .then(() => onCameraReady())
-          .catch(() => {
-            html5QrCode.clear();
-            html5QrCode = new Html5Qrcode('barcode-reader');
-            tryStart(index + 1);
-          });
+      if ('BarcodeDetector' in window) {
+        startNativeScan();
+      } else {
+        startFallbackScan();
       }
-
-      tryStart(0);
     }
 
-    function onCameraReady() {
-      document.getElementById('scan-loading').style.display = 'none';
-      document.getElementById('barcode-reader').style.display = 'block';
-      document.getElementById('scanGuide').style.display = 'block';
-      document.getElementById('scanDoneBtn').disabled = false;
-      try {
-        const video = document.querySelector('#barcode-reader video');
-        if (video && video.srcObject) {
-          const track = video.srcObject.getVideoTracks()[0];
-          // オートフォーカス設定
-          const caps = track.getCapabilities ? track.getCapabilities() : {};
-          if (caps.focusMode && caps.focusMode.includes('continuous')) {
-            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    async function startNativeScan() {
+      const tries = [
+        { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: { facingMode: 'environment' } },
+        { video: true },
+      ];
+      let stream = null;
+      for (const c of tries) {
+        try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch (e) {}
+      }
+      if (!stream) { onCameraError(); return; }
+
+      scanStream = stream;
+      const video = document.getElementById('scan-video');
+      video.srcObject = stream;
+      video.onloadedmetadata = () => {
+        video.play().then(() => {
+          video.style.display = 'block';
+          document.getElementById('scanLoadingOverlay').style.display = 'none';
+          document.getElementById('scanFrame').style.display = 'block';
+          document.getElementById('scanDoneBtn').disabled = false;
+
+          const detector = new BarcodeDetector({ formats: ['code_128'] });
+          function detect() {
+            if (!isScanning) return;
+            detector.detect(video).then(codes => {
+              codes.forEach(c => onScanSuccess(c.rawValue));
+            }).catch(() => {});
+            scanAnimFrame = requestAnimationFrame(detect);
           }
-          // トーチ自動点灯
-          if (caps.torch) {
-            track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
-          }
-          // タップでリフォーカス
-          video.addEventListener('click', (e) => {
-            if (caps.focusMode && caps.focusMode.includes('manual') && caps.focusMode.includes('continuous')) {
-              track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }).then(() => {
-                setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }), 80);
-              }).catch(() => {});
-            }
-            showFocusIndicator(e, video);
-          });
-        }
-      } catch (e) {}
+          detect();
+        }).catch(onCameraError);
+      };
+    }
+
+    function startFallbackScan() {
+      // html5-qrcode使用時はbarcode-readerを表示してからstart
+      document.getElementById('scanViewport').style.display = 'none';
+      const reader = document.getElementById('barcode-reader');
+      reader.style.display = 'block';
+      html5QrCode = new Html5Qrcode('barcode-reader');
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 20, qrbox: { width: 280, height: 110 }, formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128] },
+        onScanSuccess, () => {}
+      ).then(() => {
+        document.getElementById('scanDoneBtn').disabled = false;
+      }).catch(onCameraError);
+    }
+
+    function onCameraError() {
+      stopScan();
+      showStatus('カメラを起動できませんでした。ブラウザのカメラ許可を確認してください。', 'error');
     }
 
     function onScanSuccess(decodedText) {
       const num = decodedText.replace(/\D/g, '');
-      if (num && !scannedNumbers.has(num)) {
-        scannedNumbers.add(num);
-        document.getElementById('scannedList').innerHTML +=
-          `<span class="scanned-item">${num}</span>`;
-        updateScanCount();
-        document.getElementById('scanTitle').textContent =
-          `スキャン済み ${scannedNumbers.size}件`;
-        if (navigator.vibrate) navigator.vibrate(80);
-      }
+      if (!num || scannedNumbers.has(num)) return;
+      scannedNumbers.add(num);
+      document.getElementById('scannedList').innerHTML +=
+        `<span class="scanned-item">${num}</span>`;
+      updateScanCount();
+      document.getElementById('scanTitle').textContent = `スキャン済み ${scannedNumbers.size}件`;
+      if (navigator.vibrate) navigator.vibrate(80);
     }
 
     function stopScan() {
+      isScanning = false;
+      if (scanAnimFrame) { cancelAnimationFrame(scanAnimFrame); scanAnimFrame = null; }
+      if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
       if (html5QrCode) {
-        try {
-          const video = document.querySelector('#barcode-reader video');
-          if (video && video.srcObject) {
-            const track = video.srcObject.getVideoTracks()[0];
-            const caps = track.getCapabilities ? track.getCapabilities() : {};
-            if (caps.torch) track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
-          }
-        } catch (e) {}
-        if (isScanning) {
-          html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
-        }
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
         html5QrCode = null;
       }
-      isScanning = false;
+      // リセット
+      const video = document.getElementById('scan-video');
+      video.srcObject = null; video.style.display = 'none';
+      document.getElementById('scanViewport').style.display = '';
+      document.getElementById('barcode-reader').style.display = 'none';
       document.getElementById('scanOverlay').classList.remove('active');
       document.getElementById('scanTitle').textContent = 'バーコードスキャン';
     }
