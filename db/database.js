@@ -69,4 +69,12 @@ function clearShopifyId(certNumber) {
   db.prepare('UPDATE certs SET shopify_product_id = NULL WHERE cert_number = ?').run(certNumber);
 }
 
-module.exports = { isAlreadyFetched, saveCert, getCert, getAllCerts, getCertsPaginated, clearShopifyId };
+// 同じカード（subject/year/brand）で既にShopifyに登録済みのproduct_idを返す
+function findExistingShopifyProductId(subject, year, brand) {
+  const row = db.prepare(
+    'SELECT shopify_product_id FROM certs WHERE subject = ? AND year = ? AND brand = ? AND shopify_product_id IS NOT NULL LIMIT 1'
+  ).get(subject, year, brand);
+  return row ? row.shopify_product_id : null;
+}
+
+module.exports = { isAlreadyFetched, saveCert, getCert, getAllCerts, getCertsPaginated, clearShopifyId, findExistingShopifyProductId };

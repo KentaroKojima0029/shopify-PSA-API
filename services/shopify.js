@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { findExistingShopifyProductId } = require('../db/database');
 
 function getClient() {
   const baseURL = `https://${process.env.SHOPIFY_STORE_URL}/admin/api/2024-01`;
@@ -23,23 +24,6 @@ function formatGrade(grade) {
   if (upper.includes('2') && !upper.includes('12')) return 'PSA 2';
   if (upper.includes('1')) return 'PSA 1';
   return 'Other';
-}
-
-// ベースタイトル（グレード抜き）で既存商品を検索
-async function findProductByBaseTitle(baseTitle) {
-  const client = getClient();
-  const res = await client.get('/products.json', {
-    params: { title: baseTitle, limit: 10 },
-  });
-  // タイトルの末尾がベースタイトルと一致する商品を探す
-  // タイトル形式: "PSA 10 {baseTitle}" なので、ベースタイトルを含むものを検索
-  const products = res.data.products;
-  for (const p of products) {
-    if (p.title.endsWith(baseTitle)) {
-      return p;
-    }
-  }
-  return null;
 }
 
 // 既存商品にバリアント（グレード + 鑑定番号）を追加
@@ -168,19 +152,17 @@ async function createProduct(cert) {
 
 // メイン処理: 同一カード名があればバリアント追加、なければ新規作成
 async function registerCert(cert) {
-  const baseTitle = `${cert.subject} ${cert.year} ${cert.brand}`;
-  const existing = await findProductByBaseTitle(baseTitle);
+  const client = getClient();
 
-  if (existing) {
-    // 既存商品にバリアント（グレード + 鑑定番号）＋画像を追加
+  // DBから同じカード（subject/year/brand）の既存Shopify商品IDを取得
+  const existingProductId = findExistingShopifyProductId(cert.subject, cert.year, cert.brand);
+
+  if (existingProductId) {
+    // 既存商品の情報を取得
+    const res = await client.get(`/products/${existingProductId}.json`);
+    const existing = res.data.product;
+    // バリアント（グレード + 鑑定番号）＋画像を追加
     const variant = await addVariant(existing.id, cert);
-    // グレード違いが追加された場合、タイトルからグレードを外す
-    if (existing.title !== baseTitle && existing.title.endsWith(baseTitle)) {
-      const client = getClient();
-      await client.put(`/products/${existing.id}.json`, {
-        product: { id: existing.id, title: baseTitle }
-      }).catch(() => {});
-    }
     await addImages(existing.id, cert);
     return { product: existing, variant, isNew: false };
   } else {
