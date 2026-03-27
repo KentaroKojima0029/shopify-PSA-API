@@ -26,21 +26,17 @@ function formatGrade(grade) {
   return 'Other';
 }
 
-// ロケーションIDを取得（最初の1件）
-let cachedLocationId = null;
-async function getLocationId() {
-  if (cachedLocationId) return cachedLocationId;
-  const client = getClient();
-  const res = await client.get('/locations.json');
-  cachedLocationId = res.data.locations[0].id;
-  return cachedLocationId;
-}
-
 // 在庫を1にセット（失敗しても商品登録は止めない）
 async function setInventory(inventoryItemId, quantity = 1) {
   try {
     const client = getClient();
-    const locationId = await getLocationId();
+    // inventory_item_idが紐づくlocation_idをinventory_levelsから取得（read_locations不要）
+    const levelsRes = await client.get('/inventory_levels.json', {
+      params: { inventory_item_ids: inventoryItemId },
+    });
+    const levels = levelsRes.data.inventory_levels;
+    if (!levels || levels.length === 0) return;
+    const locationId = levels[0].location_id;
     await client.post('/inventory_levels/set.json', {
       inventory_item_id: inventoryItemId,
       location_id: locationId,
