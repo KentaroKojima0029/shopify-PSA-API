@@ -36,15 +36,19 @@ async function getLocationId() {
   return cachedLocationId;
 }
 
-// 在庫を1にセット
+// 在庫を1にセット（失敗しても商品登録は止めない）
 async function setInventory(inventoryItemId, quantity = 1) {
-  const client = getClient();
-  const locationId = await getLocationId();
-  await client.post('/inventory_levels/set.json', {
-    inventory_item_id: inventoryItemId,
-    location_id: locationId,
-    available: quantity,
-  });
+  try {
+    const client = getClient();
+    const locationId = await getLocationId();
+    await client.post('/inventory_levels/set.json', {
+      inventory_item_id: inventoryItemId,
+      location_id: locationId,
+      available: quantity,
+    });
+  } catch (err) {
+    console.error('在庫設定エラー（スキップ）:', err.response?.data || err.message);
+  }
 }
 
 // 既存商品にバリアント（グレード + 鑑定番号）を追加
@@ -59,7 +63,6 @@ async function addVariant(productId, cert) {
       },
     });
     const variant = res.data.variant;
-    // inventory_levels/set で在庫を1にセット
     await setInventory(variant.inventory_item_id, 1);
     return variant;
   } catch (err) {

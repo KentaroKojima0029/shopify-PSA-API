@@ -130,8 +130,10 @@ app.post('/api/shopify/sync/:certNumber', async (req, res) => {
       backImageUrl: cert.back_image_url,
     };
 
+    console.log(`[sync] cert=${certRecord.certNumber} subject="${certRecord.subject}" year=${certRecord.year} brand="${certRecord.brand}"`);
     const result = await shopify.registerCert(certRecord);
     certRecord.shopifyProductId = String(result.product.id);
+    console.log(`[sync] 完了: productId=${certRecord.shopifyProductId} isNew=${result.isNew}`);
 
     // DB更新
     saveCert(certRecord);
@@ -139,8 +141,8 @@ app.post('/api/shopify/sync/:certNumber', async (req, res) => {
     const action = result.isNew ? '新規商品を作成' : '既存商品にバリアントを追加';
     res.json({ message: `Shopifyに${action}しました` });
   } catch (e) {
-    console.error('Shopify連携エラー:', e.response?.data || e.message);
-    res.status(500).json({ message: 'Shopifyへの連携に失敗しました' });
+    console.error('[sync] エラー:', e.response?.data || e.message, e.stack);
+    res.status(500).json({ message: 'Shopifyへの連携に失敗しました', detail: e.message });
   }
 });
 
