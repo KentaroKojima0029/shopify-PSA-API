@@ -376,19 +376,18 @@
 
       html5QrCode = new Html5Qrcode('barcode-reader');
       html5QrCode.start(
-        { facingMode: 'environment' },
         {
-          fps: 15,
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        {
+          fps: 25,
+          qrbox: { width: 300, height: 120 },
           disableFlip: false,
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           formatsToSupport: [
             Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.ITF,
           ],
         },
         (decodedText) => {
@@ -412,6 +411,11 @@
           if (video && video.srcObject) {
             const track = video.srcObject.getVideoTracks()[0];
             triggerRefocus(track);
+            // ライト（トーチ）が使える場合は自動点灯
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            if (caps.torch) {
+              track.applyConstraints({ advanced: [{ torch: true }] }).catch(() => {});
+            }
             // タップでピント合わせ
             video.addEventListener('click', (e) => {
               triggerRefocus(track);
@@ -428,6 +432,17 @@
 
     function stopScan() {
       if (html5QrCode && isScanning) {
+        // トーチを消灯してから停止
+        try {
+          const video = document.querySelector('#barcode-reader video');
+          if (video && video.srcObject) {
+            const track = video.srcObject.getVideoTracks()[0];
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            if (caps.torch) {
+              track.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+            }
+          }
+        } catch (e) {}
         html5QrCode.stop().then(() => {
           html5QrCode.clear();
         }).catch(() => {});
